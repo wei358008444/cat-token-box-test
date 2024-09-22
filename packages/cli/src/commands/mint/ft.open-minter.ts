@@ -44,6 +44,7 @@ import {
 } from '@cat-protocol/cat-smartcontracts';
 import { ConfigService, SpendService, WalletService } from 'src/providers';
 import { scaleConfig } from 'src/token';
+import { hash160 } from 'scrypt-ts';
 
 const getPremineAddress = async (
   config: ConfigService,
@@ -210,6 +211,7 @@ export async function openMint(
   newMinter: number /* number of new minter utxo */,
   minterContract: OpenMinterContract,
   mintAmount: bigint,
+  tokenReceiverPublicKey?: string
 ): Promise<string | Error> {
   const {
     utxo: minterUtxo,
@@ -218,7 +220,11 @@ export async function openMint(
 
   const address = wallet.getAddress();
 
-  const tokenReceiver = wallet.getTokenAddress();
+  //默认自己钱包接收
+  let tokenReceiver = wallet.getTokenAddress();
+  if(tokenReceiverPublicKey){
+    tokenReceiver =   hash160(tokenReceiverPublicKey);
+  }
 
   const tokenInfo = metadata.info as OpenMinterTokenInfo;
 

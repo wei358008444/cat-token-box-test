@@ -2,6 +2,8 @@ import { Command, Option } from 'nest-commander';
 import {
   UTXO,
 } from 'scrypt-ts';
+import * as crypto from 'crypto';
+import { scriptToAddress, AddressType } from 'src/common/generateAddresses';
 import {
   getUtxos,
   OpenMinterTokenInfo,
@@ -33,6 +35,8 @@ import { pickLargeFeeUtxo } from '../send/pick';
 interface MintCommandOptions extends BoardcastCommandOptions {
   id: string;
   new?: number;
+  tokenReceiverPublicKey: string;
+  tokenReceiverAddr: string
 }
 
 function getRandomInt(max: number) {
@@ -291,6 +295,23 @@ export class MintCommand extends BoardcastCommand {
     return val;
   }
 
+  @Option({
+    flags: '--tokenReceiverPublicKey [tokenReceiverPublicKey]',
+    description: 'token接收者的公钥,修改接收者必填',
+  })
+  parseTokenReceiverPublicKey(val: string): string {
+    return val;
+  }
+
+  @Option({
+    flags: '--tokenReceiverAddr [tokenReceiverAddr]',
+    description: 'token接收者的地址，校验用,修改接收者必填',
+  })
+  parseTokenReceiverAddr(val: string): string {
+    return val;
+  }
+
+
   async getFeeUTXOs(address: btc.Address) {
     let feeUtxos = await getUtxos(
       this.configService,
@@ -316,7 +337,8 @@ export class MintCommand extends BoardcastCommand {
     amount:bigint,
     feeUtxos:UTXO[],
     utxoIndex:number,
-    gw:GroupWait
+    gw:GroupWait,
+    tokenReceiverPublicKey:string
   ){
 
     try{
@@ -413,6 +435,7 @@ export class MintCommand extends BoardcastCommand {
             2,
             minter,
             amount,
+            tokenReceiverPublicKey,
           );
 
           if (mintTxIdOrErr instanceof Error) {
@@ -449,6 +472,23 @@ export class MintCommand extends BoardcastCommand {
   //根据utxo去区分，每大于0.05的去mint
   async multuMint( passedParams: string[],
     options?: MintCommandOptions,){
+    if (options.tokenReceiverPublicKey){
+      console.log(`配置了接受token的公钥:${options.tokenReceiverPublicKey}`)
+      let tempKey = `OP_PUSHBYTES_32 ${options.tokenReceiverPublicKey}`
+      //根据公钥生成地址提示
+      const p2wpkhAddress: string = scriptToAddress(tempKey, AddressType.P2WPKH);
+      const p2trAddress: string = scriptToAddress(tempKey, AddressType.P2TR);
+      console.log(`接受token的地址是:Native SegWit Address: ${p2wpkhAddress};Taproot Address: ${p2trAddress}`)
+      if(!options.tokenReceiverAddr){
+        console.error(`填接收者公钥时必须填地址进行校验: ${options.tokenReceiverAddr}`);
+        return;
+      }
+      if(options.tokenReceiverAddr != p2wpkhAddress && p2trAddress!=options.tokenReceiverAddr){
+        console.error(`接收者地址校验异常: ${options.tokenReceiverAddr};${p2wpkhAddress};${p2trAddress});`);
+        return;
+      }
+    }
+  
     const address = this.walletService.getAddress();
     const token = await findTokenMetadataById(
       this.configService,
@@ -486,7 +526,7 @@ export class MintCommand extends BoardcastCommand {
       const feeUtxos = fomatUtxos[index];
       gw.add()
       //并发执行，不用await了
-      this._mint(address,token,scaledInfo,amount,feeUtxos,index,gw)
+      this._mint(address,token,scaledInfo,amount,feeUtxos,index,gw,options.tokenReceiverPublicKey)
     }
 
     //最后等2分钟，防止有些请求不过的
