@@ -56,8 +56,24 @@ export class WalletService {
   }
 
   loadWallet(): Wallet | null {
+      const args = process.argv.slice(2);
+  let wallet_json = "";
+  for (let i = 0; i < args.length; i++) {
+      if (args[i].includes(".json")) {
+          wallet_json = args[i];
+          break;
+      }
+  }
+  console.log("✅选择钱包文件:", wallet_json);
+  let walletFile = '';
     const dataDir = this.configService.getDataDir();
-    const walletFile = join(dataDir, 'wallet.json');
+      if (wallet_json != "") {
+          const walletFile = join(dataDir, wallet_json);
+      }
+      else {
+          walletFile = join(dataDir, 'wallet.json');
+      }
+
     let walletString = null;
 
     try {
